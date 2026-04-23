@@ -1,5 +1,6 @@
 ﻿using BepInEx;
 using BepInEx.Unity.Mono;
+using System;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -23,6 +24,9 @@ public class Plugin : BaseUnityPlugin
     private Vector2 scrollPos;
     private float windowHeight = 400f;
 
+    private bool noBugs;
+    private bool noPing;
+
     private void Update()
     {
         if (Keyboard.current != null && Keyboard.current.insertKey.wasPressedThisFrame)
@@ -30,6 +34,20 @@ public class Plugin : BaseUnityPlugin
 
         if (controller == null)
             controller = UnityEngine.Object.FindObjectOfType<GameController>();
+
+        if (noBugs && Database.State.Resources.Bugs.Value > 0f)
+            Database.State.Resources.Bugs.Value = 0f;
+
+        if (noPing)
+        {
+            Database.State.Resources.Load.Value = 0f;
+            Database.State.Resources.LoadPlayers.Value = 0f;
+            Database.State.Resources.Players.Value =
+                Math.Min(Database.State.Resources.Players.Value,
+                         Database.Derived.DatacenterCapacity.CurrentValue);
+
+            Database.State.Resources.Ping.Value = 5f;
+        }
     }
 
     private void OnGUI()
@@ -118,6 +136,12 @@ public class Plugin : BaseUnityPlugin
             if (double.TryParse(dataInput, out double amount))
                 AddData(amount);
         }
+
+        GUILayout.Space(15);
+        GUILayout.Label("=== PERFORMANCE ===");
+
+        noBugs = GUILayout.Toggle(noBugs, "No Bugs");
+        noPing = GUILayout.Toggle(noPing, "No Ping");
     }
 
     // =========================
