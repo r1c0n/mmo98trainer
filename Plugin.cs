@@ -216,6 +216,14 @@ public class Plugin : BaseUnityPlugin
         noBugs = GUILayout.Toggle(noBugs, "No Bugs");
         noPing = GUILayout.Toggle(noPing, "No Ping");
 
+        GUILayout.Space(10);
+        GUILayout.Label("=== DEV TOOLS ===");
+
+        if (GUILayout.Button("Instant Development Cycle"))
+        {
+            InstantDevelopmentCycle();
+        }
+
         GUILayout.Space(15);
         GUILayout.Label("=== TIME ===");
 
@@ -228,6 +236,33 @@ public class Plugin : BaseUnityPlugin
             timeScale = 1f;
         }
         GUILayout.EndHorizontal();
+    }
+
+    // =========================
+    // DEV TOOLS
+    // =========================
+    private void InstantDevelopmentCycle()
+    {
+        var sequel = Database.State.Sequel;
+        if (sequel == null) return;
+
+        // force state into "ready"
+        if (sequel.Time != null && sequel.Duration != null)
+        {
+            sequel.Time.SetValue(sequel.Duration.Value, 0f);
+        }
+        
+        if (sequel.Developing != null)
+        {
+            sequel.Developing.Value = true;
+        }
+
+        // directly finish
+        var method = sequel.GetType().GetMethod(
+            "FinishDevelopment",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        method?.Invoke(sequel, null);
     }
 
     // =========================
