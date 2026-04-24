@@ -15,8 +15,8 @@ public class Plugin : BaseUnityPlugin
     private string[] tabs = { "Recovery", "Unlocks" };
 
     private string moneyInput = "1000";
-    private string playersInput = "100";
-    private string fansInput = "100";
+    private string playersInput = "1000";
+    private string fansInput = "1000";
     private string dataInput = "1000";
 
     private GameController controller;
