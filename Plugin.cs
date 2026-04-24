@@ -12,12 +12,11 @@ public class Plugin : BaseUnityPlugin
     #region variables
     
     // ui layout and state
-    private Rect windowRect = new Rect(100, 100, 340, 500);
+    private Rect windowRect = new Rect(100, 100, 340, 480);
     private bool showMenu = true;
     private int selectedTab = 0;
     private string[] tabs = { "Recovery", "Unlocks", "Game" };
     private Vector2 scrollPos;
-    private float windowHeight = 400f;
 
     // text field inputs
     private string moneyInput = "1000";
@@ -35,6 +34,9 @@ public class Plugin : BaseUnityPlugin
 
     // singleton instance for harmony patches to access
     public static Plugin Instance;
+
+    // style helpers
+    private GUIStyle centerHeaderStyle;
 
     #endregion
 
@@ -130,18 +132,33 @@ public class Plugin : BaseUnityPlugin
         // dont draw anything if the menu is hidden
         if (!showMenu) return;
 
+        // setup a dark background tint for the UI elements
+        GUI.backgroundColor = new Color(0.15f, 0.15f, 0.15f, 0.95f);
+        
+        // initialize center header style if null
+        if (centerHeaderStyle == null)
+        {
+            centerHeaderStyle = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                richText = true,
+                fontSize = 13
+            };
+        }
+
         // draw the main window
-        windowRect = GUI.Window(0, windowRect, DrawWindow, "MMO98 Trainer");
+        windowRect = GUI.Window(0, windowRect, DrawWindow, $"<b><color=#00FFB2>MMO98 Trainer</color></b>");
     }
 
     private void DrawWindow(int id)
     {
         GUILayout.BeginVertical();
+        GUILayout.Space(5);
 
         // draw the top tab navigation
-        selectedTab = GUILayout.Toolbar(selectedTab, tabs);
+        selectedTab = GUILayout.Toolbar(selectedTab, tabs, GUILayout.Height(30));
 
-        GUILayout.Space(5);
+        GUILayout.Space(10);
 
         // start the scroll view area so the content doesn't bleed out
         scrollPos = GUILayout.BeginScrollView(scrollPos);
@@ -167,9 +184,10 @@ public class Plugin : BaseUnityPlugin
         GUIStyle footerStyle = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.MiddleCenter,
-            fontSize = 11
+            fontSize = 14,
+            richText = true
         };
-        GUILayout.Label($"{Info.Metadata.Name} by Official B v{Info.Metadata.Version}", footerStyle);
+        GUILayout.Label($"<color=#AAAAAA>{Info.Metadata.Name} by <b>Official B</b> v{Info.Metadata.Version}</color>", footerStyle);
 
         GUILayout.EndVertical();
 
@@ -182,53 +200,27 @@ public class Plugin : BaseUnityPlugin
     // =========================
     private void DrawRecoveryTab()
     {
-        // MONEY
-        GUILayout.Label("Money Amount:");
-        moneyInput = GUILayout.TextField(moneyInput);
-
+        GUILayout.Label("<b><color=#50c878>RESOURCES</color></b>", centerHeaderStyle);
         GUILayout.Space(5);
 
-        if (GUILayout.Button("Add Money"))
+        DrawResourceRow("Money", ref moneyInput, AddMoney);
+        DrawResourceRow("Players", ref playersInput, AddPlayers);
+        DrawResourceRow("Fans", ref fansInput, AddFans);
+        DrawResourceRow("Data", ref dataInput, AddData);
+    }
+
+    private void DrawResourceRow(string label, ref string input, Action<double> onAdd)
+    {
+        GUILayout.BeginHorizontal(GUI.skin.box);
+        GUILayout.Label(label, GUILayout.Width(60));
+        input = GUILayout.TextField(input, GUILayout.ExpandWidth(true));
+        
+        if (GUILayout.Button("Add", GUILayout.Width(60)))
         {
-            if (double.TryParse(moneyInput, out double amount))
-                AddMoney(amount);
+            if (double.TryParse(input, out double amount))
+                onAdd(amount);
         }
-
-        GUILayout.Space(10);
-
-        // PLAYERS
-        GUILayout.Label("Players:");
-        playersInput = GUILayout.TextField(playersInput);
-
-        if (GUILayout.Button("Add Players"))
-        {
-            if (double.TryParse(playersInput, out double amount))
-                AddPlayers(amount);
-        }
-
-        GUILayout.Space(10);
-
-        // TRUE FANS
-        GUILayout.Label("Fans:");
-        fansInput = GUILayout.TextField(fansInput);
-
-        if (GUILayout.Button("Add True Fans"))
-        {
-            if (double.TryParse(fansInput, out double amount))
-                AddFans(amount);
-        }
-
-        GUILayout.Space(10);
-
-        // DATA
-        GUILayout.Label("Data:");
-        dataInput = GUILayout.TextField(dataInput);
-
-        if (GUILayout.Button("Add Data"))
-        {
-            if (double.TryParse(dataInput, out double amount))
-                AddData(amount);
-        }
+        GUILayout.EndHorizontal();
     }
 
     // =========================
@@ -236,18 +228,16 @@ public class Plugin : BaseUnityPlugin
     // =========================
     private void DrawUnlocksTab()
     {
-        if (GUILayout.Button("Unlock All Upgrades"))
-            UnlockAll("UnlockAllUpgrades");
-
+        GUILayout.Label("<b><color=#FF9D00>GAME PROGRESSION</color></b>", centerHeaderStyle);
         GUILayout.Space(5);
 
-        if (GUILayout.Button("Unlock All Research"))
-            UnlockAll("UnlockAllResearch");
-
+        GUILayout.BeginVertical(GUI.skin.box);
+        if (GUILayout.Button("Unlock All Upgrades", GUILayout.Height(30))) UnlockAll("UnlockAllUpgrades");
         GUILayout.Space(5);
-
-        if (GUILayout.Button("Unlock All Datacenters"))
-            UnlockAll("UnlockAllDatacenters");
+        if (GUILayout.Button("Unlock All Research", GUILayout.Height(30))) UnlockAll("UnlockAllResearch");
+        GUILayout.Space(5);
+        if (GUILayout.Button("Unlock All Datacenters", GUILayout.Height(30))) UnlockAll("UnlockAllDatacenters");
+        GUILayout.EndVertical();
     }
     
     // =========================
@@ -255,28 +245,50 @@ public class Plugin : BaseUnityPlugin
     // =========================
     private void DrawGameTab()
     {
+        // --- PERFORMANCE SECTION ---
+        GUILayout.BeginVertical(GUI.skin.box);
+        GUILayout.Label("<b><color=#00D8FF>PERFORMANCE</color></b>", centerHeaderStyle);
         GUILayout.Space(5);
-        GUILayout.Label("=== PERFORMANCE ===");
 
         // toggles for performance cheats
-        noBugs = GUILayout.Toggle(noBugs, "No Bugs");
-        noPing = GUILayout.Toggle(noPing, "No Ping");
+        noBugs = GUILayout.Toggle(noBugs, " No Bugs");
+        GUILayout.Space(2);
+        noPing = GUILayout.Toggle(noPing, " Zero Ping");
+        GUILayout.EndVertical();
 
         GUILayout.Space(10);
-        GUILayout.Label("=== DEV TOOLS ===");
 
-        // button to instantly push a sequel development out
-        if (GUILayout.Button("Instant Development Cycle"))
+        // --- DEV TOOLS SECTION ---
+        GUILayout.BeginVertical(GUI.skin.box);
+        GUILayout.Label("<b><color=#FF5E00>DEV TOOLS</color></b>", centerHeaderStyle);
+        GUILayout.Space(5);
+
+        // button to instantly run & finish a sequel development round
+        if (GUILayout.Button("Instant Development Cycle", GUILayout.Height(30)))
         {
             InstantDevelopmentCycle();
         }
+        GUILayout.EndVertical();
 
-        GUILayout.Space(15);
-        GUILayout.Label("=== TIME ===");
+        GUILayout.Space(10);
+
+        // --- TIME SECTION ---
+        GUILayout.BeginVertical(GUI.skin.box);
+        GUILayout.Label("<b><color=#B500FF>TIME MANIPULATION</color></b>", centerHeaderStyle);
+        GUILayout.Space(5);
 
         // time speed controls and reset button
         GUILayout.BeginHorizontal();
-        GUILayout.Label($"Speed: {timeScale:F1}x", GUILayout.Width(80));
+        
+        // increased width and disabled word wrap to prevent clipping with larger numbers
+        GUIStyle speedLabelStyle = new GUIStyle(GUI.skin.label) 
+        { 
+            richText = true, 
+            alignment = TextAnchor.MiddleLeft,
+            wordWrap = false 
+        };
+        GUILayout.Label($"Speed: <color=#00FFFF>{timeScale:F1}x</color>", speedLabelStyle, GUILayout.Width(90));
+        
         timeScale = GUILayout.HorizontalSlider(timeScale, 0.1f, 50f);
         
         if (GUILayout.Button("Reset", GUILayout.Width(60)))
@@ -284,6 +296,7 @@ public class Plugin : BaseUnityPlugin
             timeScale = 1f;
         }
         GUILayout.EndHorizontal();
+        GUILayout.EndVertical();
     }
 
     #endregion
