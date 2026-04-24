@@ -1,6 +1,7 @@
 ﻿using BepInEx;
 using BepInEx.Unity.Mono;
 using System;
+using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -12,7 +13,7 @@ public class Plugin : BaseUnityPlugin
     private bool showMenu = true;
 
     private int selectedTab = 0;
-    private string[] tabs = { "Recovery", "Unlocks" };
+    private string[] tabs = { "Recovery", "Unlocks", "Game" };
 
     private string moneyInput = "1000";
     private string playersInput = "1000";
@@ -26,6 +27,50 @@ public class Plugin : BaseUnityPlugin
 
     private bool noBugs;
     private bool noPing;
+    private float timeScale = 1f;
+
+    public static Plugin Instance;
+
+    private void Awake()
+    {
+        Instance = this;
+
+        var harmony = new HarmonyLib.Harmony("com.mmo98.trainer");
+
+        foreach (var type in typeof(IIncrementalSimulation).Assembly.GetTypes())
+        {
+            if (!typeof(IIncrementalSimulation).IsAssignableFrom(type))
+                continue;
+
+            if (type.IsInterface || type.IsAbstract)
+                continue;
+
+            var method = type.GetMethod(
+                "OnUpdateSimulation",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+            );
+
+            if (method == null)
+            {
+                var map = type.GetInterfaceMap(typeof(IIncrementalSimulation));
+                method = map.TargetMethods.FirstOrDefault(m => m.Name.Contains("OnUpdateSimulation"));
+            }
+
+            if (method == null) continue;
+
+            harmony.Patch(
+                method,
+                prefix: new HarmonyLib.HarmonyMethod(typeof(Plugin), nameof(SimulationPrefix))
+            );
+        }
+    }
+
+    public static void SimulationPrefix(ref float deltaTime)
+    {
+        if (Instance == null) return;
+
+        deltaTime *= Mathf.Clamp(Instance.timeScale, 0.1f, 50f);
+    }
 
     private void Update()
     {
@@ -74,6 +119,9 @@ public class Plugin : BaseUnityPlugin
                 break;
             case 1:
                 DrawUnlocksTab();
+                break;
+            case 2:
+                DrawGameTab();
                 break;
         }
 
@@ -136,12 +184,6 @@ public class Plugin : BaseUnityPlugin
             if (double.TryParse(dataInput, out double amount))
                 AddData(amount);
         }
-
-        GUILayout.Space(15);
-        GUILayout.Label("=== PERFORMANCE ===");
-
-        noBugs = GUILayout.Toggle(noBugs, "No Bugs");
-        noPing = GUILayout.Toggle(noPing, "No Ping");
     }
 
     // =========================
@@ -161,6 +203,31 @@ public class Plugin : BaseUnityPlugin
 
         if (GUILayout.Button("Unlock All Datacenters"))
             UnlockAll("UnlockAllDatacenters");
+    }
+    
+    // =========================
+    // GAME TAB
+    // =========================
+    private void DrawGameTab()
+    {
+        GUILayout.Space(5);
+        GUILayout.Label("=== PERFORMANCE ===");
+
+        noBugs = GUILayout.Toggle(noBugs, "No Bugs");
+        noPing = GUILayout.Toggle(noPing, "No Ping");
+
+        GUILayout.Space(15);
+        GUILayout.Label("=== TIME ===");
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Label($"Speed: {timeScale:F1}x", GUILayout.Width(80));
+        timeScale = GUILayout.HorizontalSlider(timeScale, 0.1f, 50f);
+        
+        if (GUILayout.Button("Reset", GUILayout.Width(60)))
+        {
+            timeScale = 1f;
+        }
+        GUILayout.EndHorizontal();
     }
 
     // =========================
