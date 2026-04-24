@@ -28,8 +28,8 @@ public class Plugin : BaseUnityPlugin
     private GameController controller;
 
     // cheat toggles and values
-    private bool noBugs;
-    private bool noPing;
+    public bool noBugs;
+    public bool noPing;
     private float timeScale = 1f;
 
     // singleton instance for harmony patches to access
@@ -81,6 +81,9 @@ public class Plugin : BaseUnityPlugin
                 prefix: new HarmonyLib.HarmonyMethod(typeof(Plugin), nameof(SimulationPrefix))
             );
         }
+
+        // apply any classes marked with [HarmonyPatch] automatically
+        harmony.PatchAll(typeof(Plugin).Assembly);
     }
 
     public static void SimulationPrefix(ref float deltaTime)
@@ -108,19 +111,6 @@ public class Plugin : BaseUnityPlugin
         // handle no bugs toggle
         if (noBugs && Database.State.Resources.Bugs.Value > 0f)
             Database.State.Resources.Bugs.Value = 0f;
-
-        // handle no ping toggle
-        if (noPing)
-        {
-            Database.State.Resources.Load.Value = 0f;
-            Database.State.Resources.LoadPlayers.Value = 0f;
-            // prevent players from exceeding datacenter capacity
-            Database.State.Resources.Players.Value =
-                Math.Min(Database.State.Resources.Players.Value,
-                         Database.Derived.DatacenterCapacity.CurrentValue);
-
-            Database.State.Resources.Ping.Value = 5f;
-        }
     }
 
     #endregion
@@ -371,3 +361,51 @@ public class Plugin : BaseUnityPlugin
 
     #endregion
 }
+
+#region explicit harmony patches
+
+[HarmonyLib.HarmonyPatch]
+public class NoPingCongestionPatch
+{
+    static MethodBase TargetMethod()
+    {
+        var type = HarmonyLib.AccessTools.TypeByName("PingSimulation");
+        if (type != null)
+            return HarmonyLib.AccessTools.Method(type, "CalculateCongestionImpact");
+        return null;
+    }
+
+    static bool Prefix(ref float __result)
+    {
+        if (Plugin.Instance != null && Plugin.Instance.noPing)
+        {
+            __result = 0f; // completely kill congestion penalty
+            return false;
+        }
+        return true;
+    }
+}
+
+[HarmonyLib.HarmonyPatch]
+public class NoPingLoadImpactPatch
+{
+    static MethodBase TargetMethod()
+    {
+        var type = HarmonyLib.AccessTools.TypeByName("PingSimulation");
+        if (type != null)
+            return HarmonyLib.AccessTools.Method(type, "CalculateLoadImpact");
+        return null;
+    }
+
+    static bool Prefix(ref float __result)
+    {
+        if (Plugin.Instance != null && Plugin.Instance.noPing)
+        {
+            __result = 0f; // completely kill load exponential penalty
+            return false;
+        }
+        return true;
+    }
+}
+
+#endregion
