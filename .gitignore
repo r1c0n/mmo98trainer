@@ -363,3 +363,5 @@ MigrationBackup/
 FodyWeavers.xsd
 
 libs/
+# Local release archives
+artifacts/
