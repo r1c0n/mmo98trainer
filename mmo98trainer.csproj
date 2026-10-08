@@ -8,6 +8,9 @@
     <GameManagedPath Condition="'$(GameManagedPath)' == ''">$(MSBuildProjectDirectory)\libs</GameManagedPath>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
+    <!-- Analyzer 1.0.8 only recognizes BepInEx 5's BaseUnityPlugin namespace.
+         The verification harness checks our BepInEx 6 inheritance and plugin attribute. -->
+    <NoWarn>$(NoWarn);BepInEx002</NoWarn>
     <RestoreAdditionalProjectSources>
       https://api.nuget.org/v3/index.json;
       https://nuget.bepinex.dev/v3/index.json;
@@ -17,9 +20,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
-    <PackageReference Include="BepInEx.Unity.Mono" Version="6.0.0-be.*" IncludeAssets="compile" />
-    <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" />
+    <PackageReference Include="BepInEx.Analyzers" Version="1.0.8" PrivateAssets="all" />
+    <PackageReference Include="BepInEx.Unity.Mono" Version="6.0.0-be.788" IncludeAssets="compile" />
+    <PackageReference Include="BepInEx.PluginInfoProps" Version="2.1.0" />
 	<PackageReference Include="UnityEngine.Modules" Version="6000.3.2" IncludeAssets="compile" />
   </ItemGroup>
 
@@ -52,4 +55,8 @@
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
   </ItemGroup>
+  <Target Name="CheckGameReferences" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(GameManagedPath)\Assembly-CSharp.dll') Or !Exists('$(GameManagedPath)\R3.dll') Or !Exists('$(GameManagedPath)\Unity.InputSystem.dll') Or !Exists('$(GameManagedPath)\SourceGeneration.dll') Or !Exists('$(GameManagedPath)\ObservableCollections.dll')"
+           Text="Game references are missing. Run scripts/Sync-GameReferences.ps1 -GameDirectory &quot;path/to/MMO98&quot; or set GameManagedPath to MMO98_Data/Managed." />
+  </Target>
 </Project>
