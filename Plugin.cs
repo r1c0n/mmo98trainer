@@ -1,81 +1,90 @@
-using BepInEx;
-using BepInEx.Unity.Mono;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using BepInEx;
+using BepInEx.Configuration;
+using BepInEx.Unity.Mono;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-[BepInPlugin("com.mmo98.trainer", "MMO98 Trainer", "1.0.0")]
-public class Plugin : BaseUnityPlugin
+[BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+public partial class Plugin : BaseUnityPlugin
 {
-    #region variables
-    
-    // ui layout and state
-    private Rect windowRect = new Rect(100, 100, 340, 480);
-    private bool showMenu = true;
-    private int selectedTab = 0;
-    private string[] tabs = { "Recovery", "Unlocks", "Game" };
-    private Vector2 scrollPos;
+    public const string PluginGuid = "com.mmo98.trainer";
+    public const string PluginName = "MMO98 Trainer";
+    public const string PluginVersion = "1.1.0";
+    public static Plugin Instance { get; private set; }
 
-    // text field inputs
-    private string moneyInput = "1000";
-    private string playersInput = "1000";
-    private string fansInput = "1000";
-    private string dataInput = "1000";
-
-    // game references
+    private HarmonyLib.Harmony harmony;
     private GameController controller;
     private GameTimer gameTimer;
     private float originalGameSpeed;
     private float nextReferenceSearch;
-    private HarmonyLib.Harmony harmony;
-    internal SequelDevelopSimulation developmentSimulation;
+    private float nextConfigSave;
+    private DatabaseState currentState;
+    private SequelDevelopSimulation developmentSimulation;
     private readonly Dictionary<string, MethodInfo> unlockMethods = new Dictionary<string, MethodInfo>();
-    private string statusMessage = "Load a profile to use the trainer.";
+    private readonly List<string> unavailableFeatures = new List<string>();
+    private bool pingSupported, bugsSupported, uptimeSupported, developmentSupported;
+    private string statusMessage = "Ready.";
+
+    private ConfigEntry<Key> menuKey, pauseKey, resetKey;
+    private ConfigEntry<bool> showOnStartup, noBugs, noPing, fullUptime;
+    private ConfigEntry<float> simulationSpeed, uiScale, windowX, windowY;
 
     internal static bool IsGameReady => Instance != null && Instance.isActiveAndEnabled &&
         !Database.Disposed && Database.State != null && Database.Commands != null;
 
-    // cheat toggles and values
-    public bool noBugs;
-    public bool noPing;
-    private float timeScale = 1f;
-
-    // singleton instance for harmony patches to access
-    public static Plugin Instance;
-
-    // style helpers
-    private GUIStyle centerHeaderStyle;
-
-    #endregion
-
-    #region initialization and patching
-
     private void Awake()
     {
-        // setup singleton
         Instance = this;
+        Config.SaveOnConfigSet = false;
+        BindSettings();
+        showMenu = showOnStartup.Value;
+        windowRect.position = new Vector2(windowX.Value, windowY.Value);
+        Config.SettingChanged += (_, __) => nextConfigSave = Time.unscaledTime + 1f;
 
-        // initialize harmony patcher
-        harmony = new HarmonyLib.Harmony("com.mmo98.trainer");
-        TryPatch(typeof(PingSimulation), "OnUpdateSimulation", nameof(PingPrefix));
-        TryPatch(typeof(BugSimulation), "OnUpdateSimulation", postfix: nameof(BugsPostfix));
-        TryPatch(typeof(SequelDevelopSimulation), "Registered", postfix: nameof(DevelopmentRegistered));
-        TryPatch(typeof(SequelDevelopSimulation), "Unregistered", postfix: nameof(DevelopmentUnregistered));
+        harmony = new HarmonyLib.Harmony(PluginGuid);
+        pingSupported = TryPatch(typeof(PingSimulation), "OnUpdateSimulation", nameof(PingPrefix));
+        bugsSupported = TryPatch(typeof(BugSimulation), "OnUpdateSimulation", postfix: nameof(BugsPostfix));
+        uptimeSupported = TryPatch(typeof(UptimeSimulation), "OnUpdateSimulation", nameof(UptimePrefix));
+        bool registered = TryPatch(typeof(SequelDevelopSimulation), "Registered", postfix: nameof(DevelopmentRegistered));
+        bool unregistered = TryPatch(typeof(SequelDevelopSimulation), "Unregistered", postfix: nameof(DevelopmentUnregistered));
+        developmentSupported = registered && unregistered;
 
         foreach (string name in new[] { "UnlockAllUpgrades", "UnlockAllResearch", "UnlockAllDatacenters" })
         {
             var method = HarmonyLib.AccessTools.DeclaredMethod(typeof(GameController), name, Type.EmptyTypes);
             if (method == null)
+            {
+                unavailableFeatures.Add(name);
                 Logger.LogWarning($"Unavailable game action: {name}");
-            else
-                unlockMethods.Add(name, method);
+            }
+            else unlockMethods.Add(name, method);
         }
-        Logger.LogInfo($"MMO98 Trainer loaded for game {Application.version}.");
+        Config.Save();
+        Logger.LogInfo($"{PluginName} {PluginVersion} loaded for game {Application.version}; {unavailableFeatures.Count} unavailable hooks/actions.");
     }
 
-    private void TryPatch(Type type, string methodName, string prefix = null, string postfix = null)
+    private void BindSettings()
+    {
+        menuKey = Config.Bind("Shortcuts", "Menu", Key.Insert, new ConfigDescription("Show or hide the trainer.", new TrainerShortcutKeys(Key.Insert)));
+        pauseKey = Config.Bind("Shortcuts", "Pause", Key.F6, new ConfigDescription("Toggle the game's pause state while a profile is loaded.", new TrainerShortcutKeys(Key.F6)));
+        resetKey = Config.Bind("Shortcuts", "DisableEffects", Key.F8, new ConfigDescription("Disable trainer effects and restore normal simulation speed.", new TrainerShortcutKeys(Key.F8)));
+        showOnStartup = Config.Bind("Menu", "ShowOnStartup", true, "Show the trainer when the game starts.");
+        uiScale = Config.Bind("Menu", "Scale", 1f, new ConfigDescription("Menu scale; automatically fits smaller screens.", new AcceptableValueRange<float>(0.75f, 2f)));
+        windowX = Config.Bind("Menu", "WindowX", 100f, "Last menu position, before UI scaling.");
+        windowY = Config.Bind("Menu", "WindowY", 100f, "Last menu position, before UI scaling.");
+        noBugs = Config.Bind("Effects", "NoBugs", false, "Keep bugs at zero.");
+        noPing = Config.Bind("Effects", "ZeroPing", false, "Keep ping at zero without changing player count or capacity.");
+        fullUptime = Config.Bind("Effects", "FullUptime", false, "Keep uptime at 100 percent.");
+        simulationSpeed = Config.Bind("Effects", "Speed", 1f,
+            new ConfigDescription("Simulation speed relative to the game's normal speed.", new AcceptableValueRange<float>(0.1f, 50f)));
+        uiScale.Value = TrainerNumbers.ClampScale(uiScale.Value);
+        simulationSpeed.Value = TrainerNumbers.ClampSpeed(simulationSpeed.Value);
+    }
+
+    private bool TryPatch(Type type, string methodName, string prefix = null, string postfix = null)
     {
         try
         {
@@ -84,24 +93,34 @@ public class Plugin : BaseUnityPlugin
             harmony.Patch(method,
                 prefix: prefix == null ? null : new HarmonyLib.HarmonyMethod(typeof(Plugin), prefix),
                 postfix: postfix == null ? null : new HarmonyLib.HarmonyMethod(typeof(Plugin), postfix));
+            return true;
         }
         catch (Exception ex)
         {
+            unavailableFeatures.Add(type.Name + "." + methodName);
             Logger.LogError($"Could not patch {type.Name}.{methodName}: {ex}");
+            return false;
         }
     }
 
     internal static bool PingPrefix()
     {
-        if (!IsGameReady || !Instance.noPing) return true;
+        if (!IsGameReady || !Instance.pingSupported || !Instance.noPing.Value) return true;
         Database.State.Resources.Ping.SetValue(0f, 0f);
         return false;
     }
 
     internal static void BugsPostfix()
     {
-        if (IsGameReady && Instance.noBugs)
+        if (IsGameReady && Instance.bugsSupported && Instance.noBugs.Value)
             Database.State.Resources.Bugs.SetValue(0f, 0f);
+    }
+
+    internal static bool UptimePrefix()
+    {
+        if (!IsGameReady || !Instance.uptimeSupported || !Instance.fullUptime.Value) return true;
+        Database.State.Resources.Uptime.SetValue(1f, 0f);
+        return false;
     }
 
     internal static void DevelopmentRegistered(SequelDevelopSimulation __instance)
@@ -113,6 +132,58 @@ public class Plugin : BaseUnityPlugin
     {
         if (Instance != null && Instance.developmentSimulation == __instance)
             Instance.developmentSimulation = null;
+    }
+
+    private void Update()
+    {
+        var keyboard = Keyboard.current;
+        if (keyboard != null)
+        {
+            // Menu and reset take precedence if the user assigns overlapping shortcuts.
+            if (keyboard[menuKey.Value].wasPressedThisFrame) showMenu = !showMenu;
+            else if (keyboard[resetKey.Value].wasPressedThisFrame) DisableEffects();
+            else if (IsGameReady && keyboard[pauseKey.Value].wasPressedThisFrame) TogglePause();
+        }
+        if (nextConfigSave > 0f && Time.unscaledTime >= nextConfigSave)
+        {
+            Config.Save();
+            nextConfigSave = 0f;
+        }
+        if (showMenu && Mouse.current != null && Mouse.current.leftButton.wasReleasedThisFrame)
+        {
+            windowX.Value = windowRect.x;
+            windowY.Value = windowRect.y;
+        }
+        if (!IsGameReady)
+        {
+            RestoreGameSpeed();
+            controller = null;
+            currentState = null;
+            developmentSimulation = null;
+            return;
+        }
+        if (!ReferenceEquals(currentState, Database.State))
+        {
+            RestoreGameSpeed();
+            currentState = Database.State;
+            statusMessage = "Ready.";
+            nextReferenceSearch = 0f;
+        }
+        if (Time.unscaledTime >= nextReferenceSearch)
+        {
+            nextReferenceSearch = Time.unscaledTime + 1f;
+            if (controller == null) controller = UnityEngine.Object.FindFirstObjectByType<GameController>();
+            if (gameTimer == null)
+            {
+                gameTimer = UnityEngine.Object.FindFirstObjectByType<GameTimer>();
+                if (gameTimer != null) originalGameSpeed = gameTimer.GameSpeedMultiplier;
+            }
+        }
+        // GameTimer applies its maxStepTime to every command and simulation, including intervals.
+        if (gameTimer != null) gameTimer.GameSpeedMultiplier = originalGameSpeed * TrainerNumbers.ClampSpeed(simulationSpeed.Value);
+        BugsPostfix();
+        PingPrefix();
+        UptimePrefix();
     }
 
     private void RestoreGameSpeed()
@@ -127,303 +198,102 @@ public class Plugin : BaseUnityPlugin
     {
         RestoreGameSpeed();
         harmony?.UnpatchSelf();
+        Config.Save();
         if (Instance == this) Instance = null;
     }
 
-    #endregion
-
-    #region unity life cycle
-
-    private void Update()
+    private void DisableEffects()
     {
-        // toggle the menu visibility when the insert key is pressed
-        if (Keyboard.current != null && Keyboard.current.insertKey.wasPressedThisFrame)
-            showMenu = !showMenu;
-
-        if (!IsGameReady)
-        {
-            RestoreGameSpeed();
-            controller = null;
-            developmentSimulation = null;
-            return;
-        }
-
-        if (Time.unscaledTime >= nextReferenceSearch)
-        {
-            nextReferenceSearch = Time.unscaledTime + 1f;
-            if (controller == null) controller = UnityEngine.Object.FindFirstObjectByType<GameController>();
-            if (gameTimer == null)
-            {
-                gameTimer = UnityEngine.Object.FindFirstObjectByType<GameTimer>();
-                if (gameTimer != null) originalGameSpeed = gameTimer.GameSpeedMultiplier;
-            }
-        }
-        // Let the game timer advance commands and interval simulations in its own bounded steps.
-        if (gameTimer != null) gameTimer.GameSpeedMultiplier = originalGameSpeed * Mathf.Clamp(timeScale, 0.1f, 50f);
-        BugsPostfix();
-        if (noPing) Database.State.Resources.Ping.SetValue(0f, 0f);
+        noBugs.Value = noPing.Value = fullUptime.Value = false;
+        simulationSpeed.Value = 1f;
+        if (gameTimer != null) gameTimer.GameSpeedMultiplier = originalGameSpeed;
+        statusMessage = "Trainer effects disabled; normal speed restored.";
     }
 
-    #endregion
-
-    #region ui components
-
-    private void OnGUI()
+    private void TogglePause() => RunAction(() =>
     {
-        // dont draw anything if the menu is hidden
-        if (!showMenu) return;
+        Database.State.Studio.Paused.Value = !Database.State.Studio.Paused.Value;
+        return Database.State.Studio.Paused.Value ? "Game paused." : "Game resumed.";
+    });
 
-        var previousBackground = GUI.backgroundColor;
-        // setup a dark background tint for the UI elements
-        GUI.backgroundColor = new Color(0.15f, 0.15f, 0.15f, 0.95f);
-        
-        // initialize center header style if null
-        if (centerHeaderStyle == null)
-        {
-            centerHeaderStyle = new GUIStyle(GUI.skin.label)
-            {
-                alignment = TextAnchor.MiddleCenter,
-                richText = true,
-                fontSize = 13
-            };
-        }
-
-        // draw the main window
-        windowRect = GUI.Window(0, windowRect, DrawWindow, $"<b><color=#00FFB2>MMO98 Trainer</color></b>");
-        GUI.backgroundColor = previousBackground;
-    }
-
-    private void DrawWindow(int id)
-    {
-        GUILayout.BeginVertical();
-        GUILayout.Space(5);
-
-        // draw the top tab navigation
-        selectedTab = GUILayout.Toolbar(selectedTab, tabs, GUILayout.Height(30));
-
-        GUILayout.Space(10);
-
-        bool previousEnabled = GUI.enabled;
-        GUI.enabled = previousEnabled && IsGameReady && controller != null;
-
-        // start the scroll view area so the content doesn't bleed out
-        scrollPos = GUILayout.BeginScrollView(scrollPos);
-
-        // switch between our different menu tabs
-        switch (selectedTab)
-        {
-            case 0:
-                DrawRecoveryTab();
-                break;
-            case 1:
-                DrawUnlocksTab();
-                break;
-            case 2:
-                DrawGameTab();
-                break;
-        }
-
-        GUILayout.EndScrollView();
-        GUI.enabled = previousEnabled;
-        GUILayout.Label(IsGameReady ? statusMessage : "Load a profile to use the trainer.", GUI.skin.box);
-
-        // draw footer outside the scrollview so it stays at the bottom
-        GUILayout.Space(5);
-        GUIStyle footerStyle = new GUIStyle(GUI.skin.label)
-        {
-            alignment = TextAnchor.MiddleCenter,
-            fontSize = 14,
-            richText = true
-        };
-        GUILayout.Label($"<color=#AAAAAA>{Info.Metadata.Name} by <b>Official B</b> v{Info.Metadata.Version}</color>", footerStyle);
-
-        GUILayout.EndVertical();
-
-        // allow the window to be dragged around by the top part
-        GUI.DragWindow(new Rect(0, 0, 10000, 20));
-    }
-
-    // =========================
-    // RECOVERY TAB
-    // =========================
-    private void DrawRecoveryTab()
-    {
-        GUILayout.Label("<b><color=#50c878>RESOURCES</color></b>", centerHeaderStyle);
-        GUILayout.Space(5);
-
-        DrawResourceRow("Money", ref moneyInput, AddMoney);
-        DrawResourceRow("Players", ref playersInput, AddPlayers);
-        DrawResourceRow("Fans", ref fansInput, AddFans);
-        DrawResourceRow("Data", ref dataInput, AddData);
-    }
-
-    private void DrawResourceRow(string label, ref string input, Action<double> onAdd)
-    {
-        GUILayout.BeginHorizontal(GUI.skin.box);
-        GUILayout.Label(label, GUILayout.Width(60));
-        input = GUILayout.TextField(input, GUILayout.ExpandWidth(true));
-        
-        if (GUILayout.Button("Add", GUILayout.Width(60)))
-        {
-            if (double.TryParse(input, out double amount) && !double.IsNaN(amount) && !double.IsInfinity(amount) && amount > 0)
-                RunAction($"Added {amount:G} {label.ToLowerInvariant()}.", () => onAdd(amount));
-            else
-                statusMessage = "Enter a finite amount greater than zero.";
-        }
-        GUILayout.EndHorizontal();
-    }
-
-    // =========================
-    // UNLOCK TAB
-    // =========================
-    private void DrawUnlocksTab()
-    {
-        GUILayout.Label("<b><color=#FF9D00>GAME PROGRESSION</color></b>", centerHeaderStyle);
-        GUILayout.Space(5);
-
-        GUILayout.BeginVertical(GUI.skin.box);
-        if (GUILayout.Button("Unlock All Upgrades", GUILayout.Height(30))) UnlockAll("UnlockAllUpgrades");
-        GUILayout.Space(5);
-        if (GUILayout.Button("Unlock All Research", GUILayout.Height(30))) UnlockAll("UnlockAllResearch");
-        GUILayout.Space(5);
-        if (GUILayout.Button("Unlock All Datacenters", GUILayout.Height(30))) UnlockAll("UnlockAllDatacenters");
-        GUILayout.EndVertical();
-    }
-    
-    // =========================
-    // GAME TAB
-    // =========================
-    private void DrawGameTab()
-    {
-        // --- PERFORMANCE SECTION ---
-        GUILayout.BeginVertical(GUI.skin.box);
-        GUILayout.Label("<b><color=#00D8FF>PERFORMANCE</color></b>", centerHeaderStyle);
-        GUILayout.Space(5);
-
-        // toggles for performance cheats
-        noBugs = GUILayout.Toggle(noBugs, " No Bugs");
-        GUILayout.Space(2);
-        noPing = GUILayout.Toggle(noPing, " Zero Ping");
-        GUILayout.EndVertical();
-
-        GUILayout.Space(10);
-
-        // --- DEV TOOLS SECTION ---
-        GUILayout.BeginVertical(GUI.skin.box);
-        GUILayout.Label("<b><color=#FF5E00>DEV TOOLS</color></b>", centerHeaderStyle);
-        GUILayout.Space(5);
-
-        // button to instantly run & finish a sequel development round
-        if (GUILayout.Button("Instant Development Cycle", GUILayout.Height(30)))
-        {
-            InstantDevelopmentCycle();
-        }
-        GUILayout.EndVertical();
-
-        GUILayout.Space(10);
-
-        // --- TIME SECTION ---
-        GUILayout.BeginVertical(GUI.skin.box);
-        GUILayout.Label("<b><color=#B500FF>TIME MANIPULATION</color></b>", centerHeaderStyle);
-        GUILayout.Space(5);
-
-        // time speed controls and reset button
-        GUILayout.BeginHorizontal();
-        
-        // increased width and disabled word wrap to prevent clipping with larger numbers
-        GUIStyle speedLabelStyle = new GUIStyle(GUI.skin.label) 
-        { 
-            richText = true, 
-            alignment = TextAnchor.MiddleLeft,
-            wordWrap = false 
-        };
-        GUILayout.Label($"Speed: <color=#00FFFF>{timeScale:F1}x</color>", speedLabelStyle, GUILayout.Width(90));
-        
-        timeScale = GUILayout.HorizontalSlider(timeScale, 0.1f, 50f);
-        
-        if (GUILayout.Button("Reset", GUILayout.Width(60)))
-        {
-            timeScale = 1f;
-        }
-        GUILayout.EndHorizontal();
-        GUILayout.EndVertical();
-    }
-
-    #endregion
-
-    #region cheat functions
-
-    // =========================
-    // DEV TOOLS
-    // =========================
-    private void InstantDevelopmentCycle()
-    {
-        if (!IsGameReady) return;
-        if (developmentSimulation == null)
-        {
-            statusMessage = "Development simulation is not ready.";
-            return;
-        }
-        RunAction("Development cycle completed.", () =>
-        {
-        var sequel = Database.State.Sequel;
-        // Run the active simulation's normal completion path, including progress and next cost.
-        sequel.Time.SetValue(sequel.Duration.Value, 0f);
-        sequel.Developing.Value = true;
-        developmentSimulation.OnUpdateSimulation(0f);
-        });
-    }
-
-    private void RunAction(string successMessage, Action action)
+    private void RunAction(Func<string> action)
     {
         if (!IsGameReady) { statusMessage = "Load a profile first."; return; }
-        try
-        {
-            action();
-            statusMessage = successMessage;
-        }
+        try { statusMessage = action(); }
         catch (Exception ex)
         {
             statusMessage = "Action failed. See the BepInEx log for details.";
-            Logger.LogError(ex);
+            Logger.LogError(ex is TargetInvocationException && ex.InnerException != null ? ex.InnerException : ex);
         }
     }
 
-    // =========================
-    // RESOURCES
-    // =========================
-    private void AddMoney(double amount)
+    private void ChangeResource(string label, string input, R3.ReactiveProperty<double> resource, bool add)
     {
-        Database.State.Resources.Money.AddValue(amount, 0.0);
-    }
-
-    private void AddPlayers(double amount)
-    {
-        Database.State.Resources.Players.AddValue(amount, 0.0);
-    }
-
-    private void AddData(double amount)
-    {
-        Database.State.Prestige.Data.AddValue(amount, 0.0);
-    }
-
-    private void AddFans(double amount)
-    {
-        Database.State.Prestige.Fans.AddValue(amount, 0.0);
-    }
-
-    // =========================
-    // UNLOCK SYSTEM
-    // =========================
-    private void UnlockAll(string methodName)
-    {
-        if (controller == null || !unlockMethods.TryGetValue(methodName, out var method))
+        if (!TrainerNumbers.TryAmount(input, out double amount))
         {
-            statusMessage = "This unlock action is unavailable in this game build.";
+            statusMessage = "Enter a finite, non-negative number (for example 1000 or 1e6).";
             return;
         }
-        RunAction("Unlocks applied.", () => method.Invoke(controller, null));
+        RunAction(() =>
+        {
+            if (!TrainerNumbers.TryBalance(resource.Value, amount, add, out double result))
+                return "That amount would exceed the supported numeric range.";
+            resource.SetValue(result, 0.0);
+            return $"{label} {(add ? "increased by" : "set to")} {amount:G6}.";
+        });
     }
 
-    #endregion
+    private void InstantDevelopmentCycle() => RunAction(() =>
+    {
+        if (!developmentSupported || developmentSimulation == null) return "Development simulation is not ready.";
+        var sequel = Database.State.Sequel;
+        // Completing a free cycle uses the registered simulation so round, cost and notifications stay consistent.
+        sequel.Time.SetValue(sequel.Duration.Value, 0f);
+        sequel.Developing.Value = true;
+        developmentSimulation.OnUpdateSimulation(0f);
+        return "Development cycle completed.";
+    });
+
+    private void MaximizeSequelQuality() => RunAction(() =>
+    {
+        var progress = Database.State.Sequel.Progress;
+        progress.GameDesign.Value = progress.Art.Value = progress.Netcode.Value = progress.Marketing.Value = progress.Qa.Value = 1f;
+        progress.FactorRange.Value = Vector2.one;
+        return "All sequel quality categories set to 100 percent.";
+    });
+
+    private void RepairDatacenters() => RunAction(() =>
+    {
+        int count = 0;
+        // Snapshot keys because game commands can publish events that change the collection.
+        var keys = new List<Datacenter>();
+        foreach (var entry in Database.State.Datacenters.Details) keys.Add(entry.Key);
+        foreach (var key in keys)
+        {
+            var state = Database.State.Datacenters.GetState(key);
+            if (state != DatacenterState.Degraded && state != DatacenterState.Critical) continue;
+            Database.Commands.Datacenters.Restore(key);
+            count++;
+        }
+        return $"Repaired {count} datacenter(s).";
+    });
+
+    private void UnlockAll(string methodName) => RunAction(() =>
+    {
+        if (controller == null || !unlockMethods.TryGetValue(methodName, out var method))
+            return "This unlock action is unavailable in this game build.";
+        if (methodName == "UnlockAllDatacenters")
+        {
+            // The game's helper adds entries for unfinished construction, even when that key exists.
+            foreach (var entry in Database.State.Datacenters.Details)
+            {
+                if (entry.Value.State.Value != DatacenterState.Construction &&
+                    entry.Value.State.Value != DatacenterState.Unprovisioned) continue;
+                entry.Value.ReprovisionProgress.Value = 0f;
+                entry.Value.State.Value = DatacenterState.Nominal;
+            }
+        }
+        method.Invoke(controller, null);
+        return "Unlocks applied.";
+    });
 }

@@ -3,8 +3,9 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>mmo98trainer</AssemblyName>
-    <Product>My first plugin</Product>
-    <Version>1.0.0</Version>
+    <Product>MMO98 Trainer</Product>
+    <Version>1.1.0</Version>
+    <GameManagedPath Condition="'$(GameManagedPath)' == ''">$(MSBuildProjectDirectory)\libs</GameManagedPath>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <RestoreAdditionalProjectSources>
@@ -28,13 +29,27 @@
 
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
-      <HintPath>libs\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(GameManagedPath)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="R3">
-      <HintPath>libs\R3.dll</HintPath>
+      <HintPath>$(GameManagedPath)\R3.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="Unity.InputSystem">
-      <HintPath>libs\Unity.InputSystem.dll</HintPath>
+      <HintPath>$(GameManagedPath)\Unity.InputSystem.dll</HintPath>
+      <Private>false</Private>
     </Reference>
+    <Reference Include="SourceGeneration">
+      <HintPath>$(GameManagedPath)\SourceGeneration.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ObservableCollections">
+      <HintPath>$(GameManagedPath)\ObservableCollections.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
   </ItemGroup>
 </Project>
