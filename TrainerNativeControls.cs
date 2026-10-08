@@ -88,7 +88,8 @@ internal sealed class TrainerNativeControls
         text.color = color ?? theme.TextColor;
         text.alignment = alignment;
         text.textWrappingMode = TextWrappingModes.Normal;
-        text.lineSpacing = 8f;
+        // The game's pixel fonts have tight line metrics; add spacing in font units.
+        text.lineSpacing = text.font.faceInfo.pointSize * 0.6f / Mathf.Max(0.001f, text.font.faceInfo.scale);
         text.overflowMode = TextOverflowModes.Overflow;
         text.richText = false;
         text.raycastTarget = false;

@@ -69,6 +69,45 @@ public partial class Plugin : InputListener.IHandler
     {
         nextNativeRefresh = Time.unscaledTime + 0.15f;
         foreach (var binding in nativeBindings) binding();
+        UpdateNativeNavigation();
+    }
+
+    private void UpdateNativeNavigation()
+    {
+        // Automatic uGUI navigation searches every selectable in the scene, including UI behind the modal.
+        var candidates = nativeRoot.GetComponentsInChildren<Selectable>();
+        foreach (var control in candidates)
+        {
+            var navigation = new Navigation { mode = Navigation.Mode.Explicit };
+            navigation.selectOnUp = NativeNeighbor(control, Vector2.up, candidates);
+            navigation.selectOnDown = NativeNeighbor(control, Vector2.down, candidates);
+            navigation.selectOnLeft = NativeNeighbor(control, Vector2.left, candidates);
+            navigation.selectOnRight = NativeNeighbor(control, Vector2.right, candidates);
+            if (control is Slider)
+                navigation.selectOnLeft = navigation.selectOnRight = null;
+            if (control is Scrollbar)
+                navigation.selectOnUp = navigation.selectOnDown = null;
+            control.navigation = navigation;
+        }
+    }
+
+    private static Selectable NativeNeighbor(Selectable source, Vector2 direction, Selectable[] candidates)
+    {
+        var origin = (RectTransform)source.transform;
+        Vector2 position = origin.TransformPoint(origin.rect.center);
+        Selectable best = null;
+        float bestScore = 0;
+        foreach (var candidate in candidates)
+        {
+            if (candidate == source || !candidate.IsInteractable()) continue;
+            var rect = (RectTransform)candidate.transform;
+            Vector2 offset = (Vector2)rect.TransformPoint(rect.rect.center) - position;
+            float score = Vector2.Dot(direction, offset) / Mathf.Max(0.001f, offset.sqrMagnitude);
+            if (score <= bestScore) continue;
+            bestScore = score;
+            best = candidate;
+        }
+        return best;
     }
 
     private void SetMenuVisible(bool visible)
@@ -197,6 +236,7 @@ public partial class Plugin : InputListener.IHandler
             ((Image)nativeTabs[i].targetGraphic).sprite = i == selectedTab ?
                 (nativeTheme.SelectedTab ?? nativeTheme.Tab) : nativeTheme.Tab;
         }
+        if (nativeRoot.activeInHierarchy) RefreshNativeUI();
     }
 
     private TMP_Text BindLabel(Transform parent, string name, float x, float y, float width, float height,
@@ -256,20 +296,20 @@ public partial class Plugin : InputListener.IHandler
             var button = controls.Button(content, method, labels[i], 0, 50 + i * 42, 516, 36, () => UnlockAll(method));
             Gate(button, () => IsGameReady && controller != null && unlockMethods.ContainsKey(method));
         }
-        controls.Label(content, "Development", "Development", 0, 186, 520);
-        BindLabel(content, "Development Status", 0, 220, 520, 56, () => {
+        controls.Label(content, "Development", "Development", 0, 182, 520);
+        BindLabel(content, "Development Status", 0, 212, 520, 56, () => {
             if (!IsGameReady) return "Load a profile to view development.";
             var sequel = Database.State.Sequel;
             return $"Round {sequel.Round.Value}  |  Quality {sequel.Progress.Normalized:P0}\n" +
                 (sequel.Developing.Value ? $"Developing: {sequel.Time.Value:0.0} / {sequel.Duration.Value:0.0} s" : "No cycle currently running.");
         }, 16);
-        var cycle = controls.Button(content, "Complete Cycle", "Complete a free development cycle", 0, 284, 516, 36, InstantDevelopmentCycle);
+        var cycle = controls.Button(content, "Complete Cycle", "Complete a free development cycle", 0, 274, 516, 36, InstantDevelopmentCycle);
         Gate(cycle, () => IsGameReady && developmentSupported && developmentSimulation != null);
-        var quality = controls.Button(content, "Maximize Quality", "Set all sequel quality to 100%", 0, 326, 516, 36, MaximizeSequelQuality);
+        var quality = controls.Button(content, "Maximize Quality", "Set all sequel quality to 100%", 0, 316, 516, 36, MaximizeSequelQuality);
         Gate(quality, () => IsGameReady);
-        var repair = controls.Button(content, "Repair Datacenters", "Repair degraded / critical datacenters", 0, 382, 516, 36, RepairDatacenters);
+        var repair = controls.Button(content, "Repair Datacenters", "Repair degraded / critical datacenters", 0, 366, 516, 36, RepairDatacenters);
         Gate(repair, () => IsGameReady);
-        content.sizeDelta = new Vector2(content.sizeDelta.x, 434);
+        content.sizeDelta = new Vector2(content.sizeDelta.x, 414);
     }
 
     private void BuildSimulation(RectTransform content)
@@ -291,11 +331,11 @@ public partial class Plugin : InputListener.IHandler
             var button = controls.Button(content, "Speed " + speed, $"{speed:0.#}x", i * 74, 280, 70, 36, () => simulationSpeed.Value = speed);
             Gate(button, () => IsGameReady && gameTimer != null);
         }
-        controls.Label(content, "Speed Help", "Speed affects all game timers and simulations. The game's pause state is respected.", 0, 332, 520, 52, 16);
-        var pause = controls.Button(content, "Pause", "", 0, 392, 516, 36, TogglePause);
+        controls.Label(content, "Speed Help", "Speed affects all game timers and simulations. The game's pause state is respected.", 0, 320, 520, 48, 16);
+        var pause = controls.Button(content, "Pause", "", 0, 374, 516, 36, TogglePause);
         nativeBindings.Add(() => pause.GetComponentInChildren<TMP_Text>().text = IsGameReady && Database.State.Studio.Paused.Value ? "Resume game" : "Pause game");
         Gate(pause, () => IsGameReady);
-        content.sizeDelta = new Vector2(content.sizeDelta.x, 444);
+        content.sizeDelta = new Vector2(content.sizeDelta.x, 414);
     }
 
     private void BuildEffectToggle(RectTransform content, string name, string label, float y, ConfigEntry<bool> setting, Func<bool> supported)
