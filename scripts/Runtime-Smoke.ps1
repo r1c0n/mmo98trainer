@@ -1,4 +1,4 @@
-param([Parameter(Mandatory = $true)][string]$GameDirectory, [switch]$Baseline)
+param([Parameter(Mandatory = $true)][string]$GameDirectory, [switch]$Baseline, [switch]$UIProbe, [switch]$UIPreview, [switch]$Graphics)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $gameRoot = (Resolve-Path -LiteralPath $GameDirectory).Path
@@ -30,22 +30,28 @@ function Read-SaveHashes {
 }
 $saveHashesBefore = @(Read-SaveHashes)
 $oldSmokeFlag = $env:MMO98_TRAINER_SMOKE_TEST
+$oldProbePath = $env:MMO98_TRAINER_UI_PROBE
+$oldCapturePath = $env:MMO98_TRAINER_UI_CAPTURE
+$runName = if ($Baseline) { 'Baseline' } elseif ($UIPreview) { 'Preview' } elseif ($UIProbe) { 'UIProbe' } elseif ($Graphics) { 'Graphics' } else { 'Headless' }
 $gameProcess = $null
 try {
     New-Item -ItemType Directory -Path (Split-Path -Parent $pluginPath) -Force | Out-Null
     if (-not $Baseline) { Copy-Item -LiteralPath (Join-Path $projectRoot 'bin\Release\netstandard2.1\mmo98trainer.dll') -Destination $pluginPath -Force }
     Copy-Item -LiteralPath (Join-Path $projectRoot 'tests\RuntimeSmoke\bin\Release\netstandard2.1\mmo98trainer.RuntimeSmoke.dll') -Destination $smokePath
     if (-not $appIdExisted) { [IO.File]::WriteAllText($appIdPath, '3907940') }
-    $env:MMO98_TRAINER_SMOKE_TEST = if ($Baseline) { 'baseline' } else { '1' }
-    $logPath = Join-Path $workPath $(if ($Baseline) { 'Baseline-Player.log' } else { 'Player.log' })
-    $arguments = @('-batchmode', '-nographics', '-screen-width', '1280', '-screen-height', '720', '-logFile', ('"' + $logPath + '"'))
+    $env:MMO98_TRAINER_SMOKE_TEST = if ($UIPreview) { 'ui-preview' } elseif ($UIProbe) { 'ui-probe' } elseif ($Baseline) { 'baseline' } else { '1' }
+    $env:MMO98_TRAINER_UI_PROBE = Join-Path $workPath 'NativeUI-probe.csv'
+    $env:MMO98_TRAINER_UI_CAPTURE = Join-Path $workPath 'ui-preview'
+    $logPath = Join-Path $workPath "$runName-Player.log"
+    $arguments = @('-screen-width', '1280', '-screen-height', '720', '-screen-fullscreen', '0', '-logFile', ('"' + $logPath + '"'))
+    if (-not $UIPreview -and -not $Graphics) { $arguments = @('-batchmode', '-nographics') + $arguments }
     $startedAt = [DateTime]::UtcNow
     $gameProcess = Start-Process -FilePath (Join-Path $gameRoot 'MMO98.exe') -ArgumentList $arguments -WorkingDirectory $gameRoot -WindowStyle Hidden -PassThru
     if (-not $gameProcess.WaitForExit(45000)) { throw 'Smoke test exceeded 45 seconds.' }
     $bepLog = Join-Path $gameRoot 'BepInEx\LogOutput.log'
     if ((Get-Item -LiteralPath $bepLog).LastWriteTimeUtc -lt $startedAt) { throw 'The game did not produce a fresh BepInEx log.' }
     $log = Get-Content -LiteralPath $bepLog -Raw
-    Copy-Item -LiteralPath $bepLog -Destination (Join-Path $workPath $(if ($Baseline) { 'Baseline-BepInEx.log' } else { 'BepInEx.log' })) -Force
+    Copy-Item -LiteralPath $bepLog -Destination (Join-Path $workPath "$runName-BepInEx.log") -Force
     $result = $log -split '\r?\n' | Where-Object { $_ -match 'TRAINER_SMOKE_(PASS|FAIL|BASELINE)' }
     Write-Output $result
     if ($log -match 'TRAINER_SMOKE_FAIL' -or ($log -notmatch 'TRAINER_SMOKE_PASS' -and -not $Baseline)) { throw "Runtime smoke test failed. See $workPath" }
@@ -55,6 +61,8 @@ try {
 finally {
     if ($null -ne $gameProcess -and -not $gameProcess.HasExited) { Stop-Process -Id $gameProcess.Id -Force; $gameProcess.WaitForExit() }
     $env:MMO98_TRAINER_SMOKE_TEST = $oldSmokeFlag
+    $env:MMO98_TRAINER_UI_PROBE = $oldProbePath
+    $env:MMO98_TRAINER_UI_CAPTURE = $oldCapturePath
     if ($pluginExisted) { Copy-Item -LiteralPath $pluginBackup -Destination $pluginPath -Force }
     elseif (Test-Path -LiteralPath $pluginPath) { Remove-Item -LiteralPath $pluginPath }
     if ($configExisted) { Copy-Item -LiteralPath $configBackup -Destination $configPath -Force }

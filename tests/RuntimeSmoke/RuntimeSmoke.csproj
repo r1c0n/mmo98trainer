@@ -13,5 +13,7 @@
     <Reference Include="R3" HintPath="$(GameManagedPath)\R3.dll" Private="false" />
     <Reference Include="SourceGeneration" HintPath="$(GameManagedPath)\SourceGeneration.dll" Private="false" />
     <Reference Include="ObservableCollections" HintPath="$(GameManagedPath)\ObservableCollections.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="$(GameManagedPath)\UnityEngine.UI.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="$(GameManagedPath)\Unity.TextMeshPro.dll" Private="false" />
   </ItemGroup>
 </Project>
