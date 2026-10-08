@@ -1,7 +1,7 @@
-﻿using BepInEx;
+using BepInEx;
 using BepInEx.Unity.Mono;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -26,6 +26,16 @@ public class Plugin : BaseUnityPlugin
 
     // game references
     private GameController controller;
+    private GameTimer gameTimer;
+    private float originalGameSpeed;
+    private float nextReferenceSearch;
+    private HarmonyLib.Harmony harmony;
+    internal SequelDevelopSimulation developmentSimulation;
+    private readonly Dictionary<string, MethodInfo> unlockMethods = new Dictionary<string, MethodInfo>();
+    private string statusMessage = "Load a profile to use the trainer.";
+
+    internal static bool IsGameReady => Instance != null && Instance.isActiveAndEnabled &&
+        !Database.Disposed && Database.State != null && Database.Commands != null;
 
     // cheat toggles and values
     public bool noBugs;
@@ -48,50 +58,76 @@ public class Plugin : BaseUnityPlugin
         Instance = this;
 
         // initialize harmony patcher
-        var harmony = new HarmonyLib.Harmony("com.mmo98.trainer");
+        harmony = new HarmonyLib.Harmony("com.mmo98.trainer");
+        TryPatch(typeof(PingSimulation), "OnUpdateSimulation", nameof(PingPrefix));
+        TryPatch(typeof(BugSimulation), "OnUpdateSimulation", postfix: nameof(BugsPostfix));
+        TryPatch(typeof(SequelDevelopSimulation), "Registered", postfix: nameof(DevelopmentRegistered));
+        TryPatch(typeof(SequelDevelopSimulation), "Unregistered", postfix: nameof(DevelopmentUnregistered));
 
-        // search for all simulation classes to speed up the game time properly
-        foreach (var type in typeof(IIncrementalSimulation).Assembly.GetTypes())
+        foreach (string name in new[] { "UnlockAllUpgrades", "UnlockAllResearch", "UnlockAllDatacenters" })
         {
-            if (!typeof(IIncrementalSimulation).IsAssignableFrom(type))
-                continue;
-
-            if (type.IsInterface || type.IsAbstract)
-                continue;
-
-            // grab the update method
-            var method = type.GetMethod(
-                "OnUpdateSimulation",
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
-            );
-
-            // if we couldn't find it easily, try finding it via the interface map
+            var method = HarmonyLib.AccessTools.DeclaredMethod(typeof(GameController), name, Type.EmptyTypes);
             if (method == null)
-            {
-                var map = type.GetInterfaceMap(typeof(IIncrementalSimulation));
-                method = map.TargetMethods.FirstOrDefault(m => m.Name.Contains("OnUpdateSimulation"));
-            }
-
-            // skip if still not found
-            if (method == null) continue;
-
-            // apply the patch
-            harmony.Patch(
-                method,
-                prefix: new HarmonyLib.HarmonyMethod(typeof(Plugin), nameof(SimulationPrefix))
-            );
+                Logger.LogWarning($"Unavailable game action: {name}");
+            else
+                unlockMethods.Add(name, method);
         }
-
-        // apply any classes marked with [HarmonyPatch] automatically
-        harmony.PatchAll(typeof(Plugin).Assembly);
+        Logger.LogInfo($"MMO98 Trainer loaded for game {Application.version}.");
     }
 
-    public static void SimulationPrefix(ref float deltaTime)
+    private void TryPatch(Type type, string methodName, string prefix = null, string postfix = null)
     {
-        if (Instance == null) return;
+        try
+        {
+            var method = HarmonyLib.AccessTools.DeclaredMethod(type, methodName);
+            if (method == null) throw new MissingMethodException(type.FullName, methodName);
+            harmony.Patch(method,
+                prefix: prefix == null ? null : new HarmonyLib.HarmonyMethod(typeof(Plugin), prefix),
+                postfix: postfix == null ? null : new HarmonyLib.HarmonyMethod(typeof(Plugin), postfix));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError($"Could not patch {type.Name}.{methodName}: {ex}");
+        }
+    }
 
-        // multiply the game's delta time
-        deltaTime *= Mathf.Clamp(Instance.timeScale, 0.1f, 50f);
+    internal static bool PingPrefix()
+    {
+        if (!IsGameReady || !Instance.noPing) return true;
+        Database.State.Resources.Ping.SetValue(0f, 0f);
+        return false;
+    }
+
+    internal static void BugsPostfix()
+    {
+        if (IsGameReady && Instance.noBugs)
+            Database.State.Resources.Bugs.SetValue(0f, 0f);
+    }
+
+    internal static void DevelopmentRegistered(SequelDevelopSimulation __instance)
+    {
+        if (Instance != null) Instance.developmentSimulation = __instance;
+    }
+
+    internal static void DevelopmentUnregistered(SequelDevelopSimulation __instance)
+    {
+        if (Instance != null && Instance.developmentSimulation == __instance)
+            Instance.developmentSimulation = null;
+    }
+
+    private void RestoreGameSpeed()
+    {
+        if (gameTimer != null) gameTimer.GameSpeedMultiplier = originalGameSpeed;
+        gameTimer = null;
+    }
+
+    private void OnDisable() => RestoreGameSpeed();
+
+    private void OnDestroy()
+    {
+        RestoreGameSpeed();
+        harmony?.UnpatchSelf();
+        if (Instance == this) Instance = null;
     }
 
     #endregion
@@ -104,13 +140,28 @@ public class Plugin : BaseUnityPlugin
         if (Keyboard.current != null && Keyboard.current.insertKey.wasPressedThisFrame)
             showMenu = !showMenu;
 
-        // try to find the game controller if we don't have it yet
-        if (controller == null)
-            controller = UnityEngine.Object.FindObjectOfType<GameController>();
+        if (!IsGameReady)
+        {
+            RestoreGameSpeed();
+            controller = null;
+            developmentSimulation = null;
+            return;
+        }
 
-        // handle no bugs toggle
-        if (noBugs && Database.State.Resources.Bugs.Value > 0f)
-            Database.State.Resources.Bugs.Value = 0f;
+        if (Time.unscaledTime >= nextReferenceSearch)
+        {
+            nextReferenceSearch = Time.unscaledTime + 1f;
+            if (controller == null) controller = UnityEngine.Object.FindFirstObjectByType<GameController>();
+            if (gameTimer == null)
+            {
+                gameTimer = UnityEngine.Object.FindFirstObjectByType<GameTimer>();
+                if (gameTimer != null) originalGameSpeed = gameTimer.GameSpeedMultiplier;
+            }
+        }
+        // Let the game timer advance commands and interval simulations in its own bounded steps.
+        if (gameTimer != null) gameTimer.GameSpeedMultiplier = originalGameSpeed * Mathf.Clamp(timeScale, 0.1f, 50f);
+        BugsPostfix();
+        if (noPing) Database.State.Resources.Ping.SetValue(0f, 0f);
     }
 
     #endregion
@@ -122,6 +173,7 @@ public class Plugin : BaseUnityPlugin
         // dont draw anything if the menu is hidden
         if (!showMenu) return;
 
+        var previousBackground = GUI.backgroundColor;
         // setup a dark background tint for the UI elements
         GUI.backgroundColor = new Color(0.15f, 0.15f, 0.15f, 0.95f);
         
@@ -138,6 +190,7 @@ public class Plugin : BaseUnityPlugin
 
         // draw the main window
         windowRect = GUI.Window(0, windowRect, DrawWindow, $"<b><color=#00FFB2>MMO98 Trainer</color></b>");
+        GUI.backgroundColor = previousBackground;
     }
 
     private void DrawWindow(int id)
@@ -149,6 +202,9 @@ public class Plugin : BaseUnityPlugin
         selectedTab = GUILayout.Toolbar(selectedTab, tabs, GUILayout.Height(30));
 
         GUILayout.Space(10);
+
+        bool previousEnabled = GUI.enabled;
+        GUI.enabled = previousEnabled && IsGameReady && controller != null;
 
         // start the scroll view area so the content doesn't bleed out
         scrollPos = GUILayout.BeginScrollView(scrollPos);
@@ -168,6 +224,8 @@ public class Plugin : BaseUnityPlugin
         }
 
         GUILayout.EndScrollView();
+        GUI.enabled = previousEnabled;
+        GUILayout.Label(IsGameReady ? statusMessage : "Load a profile to use the trainer.", GUI.skin.box);
 
         // draw footer outside the scrollview so it stays at the bottom
         GUILayout.Space(5);
@@ -207,8 +265,10 @@ public class Plugin : BaseUnityPlugin
         
         if (GUILayout.Button("Add", GUILayout.Width(60)))
         {
-            if (double.TryParse(input, out double amount))
-                onAdd(amount);
+            if (double.TryParse(input, out double amount) && !double.IsNaN(amount) && !double.IsInfinity(amount) && amount > 0)
+                RunAction($"Added {amount:G} {label.ToLowerInvariant()}.", () => onAdd(amount));
+            else
+                statusMessage = "Enter a finite amount greater than zero.";
         }
         GUILayout.EndHorizontal();
     }
@@ -298,26 +358,35 @@ public class Plugin : BaseUnityPlugin
     // =========================
     private void InstantDevelopmentCycle()
     {
+        if (!IsGameReady) return;
+        if (developmentSimulation == null)
+        {
+            statusMessage = "Development simulation is not ready.";
+            return;
+        }
+        RunAction("Development cycle completed.", () =>
+        {
         var sequel = Database.State.Sequel;
-        if (sequel == null) return;
+        // Run the active simulation's normal completion path, including progress and next cost.
+        sequel.Time.SetValue(sequel.Duration.Value, 0f);
+        sequel.Developing.Value = true;
+        developmentSimulation.OnUpdateSimulation(0f);
+        });
+    }
 
-        // force state into "ready"
-        if (sequel.Time != null && sequel.Duration != null)
+    private void RunAction(string successMessage, Action action)
+    {
+        if (!IsGameReady) { statusMessage = "Load a profile first."; return; }
+        try
         {
-            sequel.Time.SetValue(sequel.Duration.Value, 0f);
+            action();
+            statusMessage = successMessage;
         }
-        
-        if (sequel.Developing != null)
+        catch (Exception ex)
         {
-            sequel.Developing.Value = true;
+            statusMessage = "Action failed. See the BepInEx log for details.";
+            Logger.LogError(ex);
         }
-
-        // directly finish by invoking the private method
-        var method = sequel.GetType().GetMethod(
-            "FinishDevelopment",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-
-        method?.Invoke(sequel, null);
     }
 
     // =========================
@@ -348,64 +417,13 @@ public class Plugin : BaseUnityPlugin
     // =========================
     private void UnlockAll(string methodName)
     {
-        if (controller == null) return;
-
-        // use reflection to call private unlock methods on the game controller
-        MethodInfo method = typeof(GameController).GetMethod(
-            methodName,
-            BindingFlags.NonPublic | BindingFlags.Instance
-        );
-
-        method?.Invoke(controller, null);
+        if (controller == null || !unlockMethods.TryGetValue(methodName, out var method))
+        {
+            statusMessage = "This unlock action is unavailable in this game build.";
+            return;
+        }
+        RunAction("Unlocks applied.", () => method.Invoke(controller, null));
     }
 
     #endregion
 }
-
-#region explicit harmony patches
-
-[HarmonyLib.HarmonyPatch]
-public class NoPingCongestionPatch
-{
-    static MethodBase TargetMethod()
-    {
-        var type = HarmonyLib.AccessTools.TypeByName("PingSimulation");
-        if (type != null)
-            return HarmonyLib.AccessTools.Method(type, "CalculateCongestionImpact");
-        return null;
-    }
-
-    static bool Prefix(ref float __result)
-    {
-        if (Plugin.Instance != null && Plugin.Instance.noPing)
-        {
-            __result = 0f; // completely kill congestion penalty
-            return false;
-        }
-        return true;
-    }
-}
-
-[HarmonyLib.HarmonyPatch]
-public class NoPingLoadImpactPatch
-{
-    static MethodBase TargetMethod()
-    {
-        var type = HarmonyLib.AccessTools.TypeByName("PingSimulation");
-        if (type != null)
-            return HarmonyLib.AccessTools.Method(type, "CalculateLoadImpact");
-        return null;
-    }
-
-    static bool Prefix(ref float __result)
-    {
-        if (Plugin.Instance != null && Plugin.Instance.noPing)
-        {
-            __result = 0f; // completely kill load exponential penalty
-            return false;
-        }
-        return true;
-    }
-}
-
-#endregion
