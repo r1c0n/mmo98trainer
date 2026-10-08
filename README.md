@@ -2,11 +2,14 @@
 
 A BepInEx 6 Mono trainer for MMO98, updated to version 1.1.0. Compatibility was checked against game **2026.07.26.1** (Steam build **24396256**) on October 8, 2026 using dnSpy MCP and the installed game runtime. See [COMPATIBILITY.md](COMPATIBILITY.md) for evidence and test limits.
 
+The menu uses the game's native uGUI/TextMeshPro controls, fonts, and Windows-style sprites. It shares the game's Input System EventSystem and keeps the existing trainer actions and configuration. The native UI update retains plugin version **1.1.0**.
+
 ## Controls and features
 
 | Shortcut | Action |
 | --- | --- |
 | Insert | Show/hide the trainer |
+| Escape | Close the trainer |
 | F6 | Pause/resume the game |
 | F8 | Disable all trainer effects and restore normal speed |
 
@@ -18,6 +21,8 @@ A BepInEx 6 Mono trainer for MMO98, updated to version 1.1.0. Compatibility was 
 Effects and preferences persist in `BepInEx/config/com.mmo98.trainer.cfg`. First-run effects are off and speed is 1x. To change shortcuts, close the game and edit the config; supported keys are Insert, Home, and F1-F12. When shortcuts overlap, menu takes priority, followed by disable-effects, then pause.
 
 Resource, unlock, quality, and repair actions change the loaded profile and are included in normal game saves. Hiding the menu leaves active effects enabled. F8 disables the continuous effects; it does not undo resource edits, unlocks, or the game's pause state. Game actions are disabled while no profile is loaded.
+
+Drag the blue title bar to move the window, use the mouse wheel or scrollbar to reach the rest of a tab, and use the close button or Escape to return to the game. Tabs retain their scroll positions. While open, the trainer blocks mouse clicks and game view shortcuts from reaching the UI behind it; keyboard navigation stays within its controls. The simulation continues unless paused with F6 or the trainer's Pause button. Text fields support selection, caret movement, and clipboard shortcuts through TextMeshPro.
 
 ## Build and install
 
@@ -36,7 +41,7 @@ Alternatively, sync local reference copies, then use the default build:
 dotnet build .\mmo98trainer.csproj -c Release
 ```
 
-The five references are Assembly-CSharp, R3, Unity.InputSystem, SourceGeneration, and ObservableCollections. Sync them after a game update. Additional local reference files are ignored by Git. Build dependencies are pinned to the versions used for verification.
+The seven references are Assembly-CSharp, R3, Unity.InputSystem, SourceGeneration, ObservableCollections, UnityEngine.UI, and Unity.TextMeshPro. Sync them after a game update. The `libs` directory and other local reference files are ignored by Git. Build dependencies are pinned to the versions used for verification.
 
 Close MMO98, then copy **only** `bin/Release/netstandard2.1/mmo98trainer.dll` to `MMO98/BepInEx/plugins/mmo98trainer/mmo98trainer.dll`. Replace the old trainer DLL and avoid leaving a second copy elsewhere under `plugins`. The game supplies its own assemblies; do not install the `libs` directory or test DLLs. A missing-reference build explains how to sync the required files.
 
@@ -54,16 +59,18 @@ Run just the numeric tests without an installed game:
 dotnet run --project .\tests\Verification\Verification.csproj -c Release
 ```
 
-For the contained native runtime test, close MMO98 and keep Steam available:
+For the contained graphical runtime test, close MMO98 and keep Steam available:
 
 ```powershell
-.\scripts\Runtime-Smoke.ps1 -GameDirectory 'F:\SteamLibrary\steamapps\common\MMO98'
+.\scripts\Runtime-Smoke.ps1 -GameDirectory 'F:\SteamLibrary\steamapps\common\MMO98' -Graphics
 ```
 
-The runtime harness starts the game hidden in headless mode, uses disposable state and real game catalogs, and never loads a profile or resumes a game timer. It temporarily suppresses scene-specific UI, audio, and IRC presentation while testing game commands. It restores the previous trainer and config, removes its test DLL and temporary Steam app ID file, and checks save-file hashes. Logs remain under `obj/runtime-smoke`. The script reports native shutdown failures separately from assertion results.
+The runtime harness starts the game with a hidden-window request, uses disposable state and real game catalogs, and never loads a profile or resumes a game timer. It temporarily suppresses scene-specific UI, audio, and IRC presentation while testing game commands. It restores the previous trainer and config, removes its test DLL and temporary Steam app ID file, and checks save-file hashes. Logs remain under `obj/runtime-smoke`, named by mode. The graphical run passed **74 assertions** and exited normally.
 
-Use `-Baseline` to compare startup/shutdown with the previously installed trainer. On the verified installation, both the original 1.0.0 trainer and the updated trainer trigger a native headless shutdown crash after the test finishes. The 39 trainer assertions passed; the complete smoke command therefore still reports a shutdown failure. This has not been established as a regression from the update. Details are in [COMPATIBILITY.md](COMPATIBILITY.md).
+Omit `-Graphics` for a headless batch run; rendered hit-target checks are skipped in that mode. Use `-Baseline` to compare startup/shutdown with the previously installed trainer. On the verified installation, both the original 1.0.0 trainer and the updated trainer trigger a native headless shutdown crash after assertions finish. The script reports that failure separately. Normal graphical testing exits cleanly. Details are in [COMPATIBILITY.md](COMPATIBILITY.md).
 
-To verify interactive behavior, open a profile and check menu dragging/scaling/scrolling, shortcuts, effect toggles, pause, development notifications, and normal saving/reloading. Those graphical and save-roundtrip checks are not covered by the disposable-state runtime harness.
+Use `-UIPreview` to capture four rendered tab screenshots with disposable sample balances under `obj/runtime-smoke/ui-preview`. Use `-UIProbe` to export the loaded native UI's fonts, sprites, colors, and control sizes to `obj/runtime-smoke/NativeUI-probe.csv`.
+
+Automated graphical checks cover native hit targets, button callbacks, text focus cleanup, modal input, scrolling, tab retention, scaling, and dragging. To verify gameplay presentation and save roundtrips, open a real profile and check development notifications and normal saving/reloading; those checks remain outside the disposable-state harness.
 
 Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `fix(trainer): ...`, `feat(trainer): ...`, `test(trainer): ...`, and `docs(trainer): ...` at meaningful checkpoints.

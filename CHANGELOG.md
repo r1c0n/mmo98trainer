@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Replaced Unity IMGUI with the game's native uGUI/TextMeshPro style, including its fonts, title bar, buttons, tabs, checkboxes, and sliders.
+- Added native text fields, modal input handling, an Escape/close button, scrolling with retained tab positions, scaled dragging, and focus/lifecycle cleanup.
+- Added graphical runtime interaction checks, native asset probing, and rendered tab previews. Graphical verification passes and exits cleanly.
+- Added UnityEngine.UI and Unity.TextMeshPro to the seven local game references; reference DLLs remain ignored by Git.
+- Kept the plugin and assembly version at 1.1.0.
+
 ## 1.1.0 - 2026-10-08
 
 ### Added
