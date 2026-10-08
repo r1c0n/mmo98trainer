@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>mmo98trainer.RuntimeSmoke</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <GameManagedPath Condition="'$(GameManagedPath)' == ''">$(MSBuildProjectDirectory)\..\..\libs</GameManagedPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BepInEx.Unity.Mono" Version="6.0.0-be.788" IncludeAssets="compile" />
+    <PackageReference Include="UnityEngine.Modules" Version="6000.3.2" IncludeAssets="compile" />
+    <ProjectReference Include="..\..\mmo98trainer.csproj" />
+    <Reference Include="Assembly-CSharp" HintPath="$(GameManagedPath)\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="R3" HintPath="$(GameManagedPath)\R3.dll" Private="false" />
+    <Reference Include="SourceGeneration" HintPath="$(GameManagedPath)\SourceGeneration.dll" Private="false" />
+    <Reference Include="ObservableCollections" HintPath="$(GameManagedPath)\ObservableCollections.dll" Private="false" />
+  </ItemGroup>
+</Project>
