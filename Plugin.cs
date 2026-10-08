@@ -140,7 +140,8 @@ public partial class Plugin : BaseUnityPlugin
         if (keyboard != null)
         {
             // Menu and reset take precedence if the user assigns overlapping shortcuts.
-            if (keyboard[menuKey.Value].wasPressedThisFrame) showMenu = !showMenu;
+            if (keyboard[menuKey.Value].wasPressedThisFrame) SetMenuVisible(!showMenu);
+            else if (showMenu && keyboard.escapeKey.wasPressedThisFrame) SetMenuVisible(false);
             else if (keyboard[resetKey.Value].wasPressedThisFrame) DisableEffects();
             else if (IsGameReady && keyboard[pauseKey.Value].wasPressedThisFrame) TogglePause();
         }
@@ -149,11 +150,7 @@ public partial class Plugin : BaseUnityPlugin
             Config.Save();
             nextConfigSave = 0f;
         }
-        if (showMenu && Mouse.current != null && Mouse.current.leftButton.wasReleasedThisFrame)
-        {
-            windowX.Value = windowRect.x;
-            windowY.Value = windowRect.y;
-        }
+        UpdateNativeUI();
         if (!IsGameReady)
         {
             RestoreGameSpeed();
@@ -192,10 +189,15 @@ public partial class Plugin : BaseUnityPlugin
         gameTimer = null;
     }
 
-    private void OnDisable() => RestoreGameSpeed();
+    private void OnDisable()
+    {
+        RestoreGameSpeed();
+        HideNativeUI();
+    }
 
     private void OnDestroy()
     {
+        DestroyNativeUI();
         RestoreGameSpeed();
         harmony?.UnpatchSelf();
         Config.Save();

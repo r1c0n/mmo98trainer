@@ -51,12 +51,20 @@
       <HintPath>$(GameManagedPath)\ObservableCollections.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(GameManagedPath)\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(GameManagedPath)\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
   </ItemGroup>
   <Target Name="CheckGameReferences" BeforeTargets="ResolveAssemblyReferences">
-    <Error Condition="!Exists('$(GameManagedPath)\Assembly-CSharp.dll') Or !Exists('$(GameManagedPath)\R3.dll') Or !Exists('$(GameManagedPath)\Unity.InputSystem.dll') Or !Exists('$(GameManagedPath)\SourceGeneration.dll') Or !Exists('$(GameManagedPath)\ObservableCollections.dll')"
+    <Error Condition="!Exists('$(GameManagedPath)\Assembly-CSharp.dll') Or !Exists('$(GameManagedPath)\R3.dll') Or !Exists('$(GameManagedPath)\Unity.InputSystem.dll') Or !Exists('$(GameManagedPath)\SourceGeneration.dll') Or !Exists('$(GameManagedPath)\ObservableCollections.dll') Or !Exists('$(GameManagedPath)\UnityEngine.UI.dll') Or !Exists('$(GameManagedPath)\Unity.TextMeshPro.dll')"
            Text="Game references are missing. Run scripts/Sync-GameReferences.ps1 -GameDirectory &quot;path/to/MMO98&quot; or set GameManagedPath to MMO98_Data/Managed." />
   </Target>
 </Project>
