@@ -1,76 +1,76 @@
 # MMO98 Trainer
 
-A BepInEx 6 Mono trainer for MMO98, updated to version 1.1.0. Compatibility was checked against game **2026.07.26.1** (Steam build **24396256**) on October 8, 2026 using dnSpy MCP and the installed game runtime. See [COMPATIBILITY.md](COMPATIBILITY.md) for evidence and test limits.
+Edit your resources, unlock upgrades, and change the pace of MMO98 from an in-game menu styled to match the game.
 
-The menu uses the game's native uGUI/TextMeshPro controls, fonts, and Windows-style sprites. It shares the game's Input System EventSystem and keeps the existing trainer actions and configuration. The native UI update retains plugin version **1.1.0**.
+This was the **first-ever trainer made for MMO98**, created just a few days after the game's release. It was kept for private use until now.
 
-## Controls and features
+## Installation
 
-| Shortcut | Action |
+You need **MMO98**, **BepInEx 6 Mono (64-bit)**, and the trainer file, `mmo98trainer.dll`.
+
+1. Open your MMO98 installation folder—the folder containing `MMO98.exe`.
+2. If BepInEx is not already installed, follow the [official installation guide](https://docs.bepinex.dev/master/articles/user_guide/installation/unity_mono.html) and use the **Unity.Mono-win-x64** build. Start the game once, then close it.
+3. With the game closed, create a `mmo98trainer` folder inside `BepInEx/plugins` and copy `mmo98trainer.dll` into it:
+
+   ```text
+   MMO98/BepInEx/plugins/mmo98trainer/mmo98trainer.dll
+   ```
+
+4. Start MMO98. If the trainer covers the main menu, press **Insert** to hide it. Load a profile, then press **Insert** to open the trainer.
+
+When updating, replace the existing trainer DLL. Keep only one copy inside the BepInEx plugins folder.
+
+If you downloaded the source files and need to build the DLL yourself, see the [developer guide](DEVELOPMENT.md#build).
+
+## Controls
+
+| Key | Action |
 | --- | --- |
-| Insert | Show/hide the trainer |
-| Escape | Close the trainer |
-| F6 | Pause/resume the game |
-| F8 | Disable all trainer effects and restore normal speed |
+| **Insert** | Open or close the trainer |
+| **Escape** | Close the trainer |
+| **F6** | Pause or resume the game |
+| **F8** | Turn off trainer effects and restore normal speed |
 
-- **Resources:** live money, player, fan, and data totals; Add and Set buttons; 1,000/1,000,000 input presets. Accepts zero, local decimal notation, and scientific notation such as `1e6`. Invalid values and overflowing additions are rejected.
-- **Progression:** unlock all upgrades/research/datacenters; complete a free development cycle; set every sequel quality category to 100%; repair degraded/critical datacenters. The development button also completes an already running cycle.
-- **Simulation:** no bugs, actual zero ping, 100% uptime, speed from 0.1x to 50x, and speed presets. Speed uses the game's timer, so command timers and interval simulations advance together in the game's bounded steps.
-- **Settings:** menu scale, automatic fitting on smaller screens, saved menu position, show-on-startup preference, game/trainer versions, and unavailable-feature diagnostics.
+Drag the blue title bar to move the window. Use the mouse wheel or scrollbar to see the rest of a tab. You can change the menu size and whether it opens at startup in **Settings**.
 
-Effects and preferences persist in `BepInEx/config/com.mmo98.trainer.cfg`. First-run effects are off and speed is 1x. To change shortcuts, close the game and edit the config; supported keys are Insert, Home, and F1-F12. When shortcuts overlap, menu takes priority, followed by disable-effects, then pause.
+The game continues running while the menu is open. Use **F6** or the **Pause game** button when you want to pause.
 
-Resource, unlock, quality, and repair actions change the loaded profile and are included in normal game saves. Hiding the menu leaves active effects enabled. F8 disables the continuous effects; it does not undo resource edits, unlocks, or the game's pause state. Game actions are disabled while no profile is loaded.
+## Features
 
-Drag the blue title bar to move the window, use the mouse wheel or scrollbar to reach the rest of a tab, and use the close button or Escape to return to the game. Tabs retain their scroll positions. While open, the trainer blocks mouse clicks and game view shortcuts from reaching the UI behind it; keyboard navigation stays within its controls. The simulation continues unless paused with F6 or the trainer's Pause button. Text fields support selection, caret movement, and clipboard shortcuts through TextMeshPro.
+- **Resources:** view and change money, players, fans, and data. **Add** increases the current amount; **Set** replaces it. Enter amounts such as `1000` or `1e6` for one million.
+- **Progression:** unlock all upgrades, research, and datacenters; complete a free development cycle; maximize sequel quality; and repair damaged datacenters.
+- **Simulation:** keep bugs and ping at zero, maintain 100% uptime, and adjust game speed from **0.1x to 50x**.
+- **Settings:** adjust the menu scale, reset its position, choose whether it appears at startup, and check game and trainer versions.
 
-## Build and install
+Game actions become available after you load a profile. Effects start switched off, with game speed at 1x, on the first run.
 
-Use the .NET 10 SDK and an existing BepInEx 6 Mono installation for the game. This project is not an IL2CPP plugin.
+## Saving and turning effects off
 
-Build directly against your installed game's assemblies:
+Resource edits, unlocks, sequel quality changes, and repairs are included in the game's normal saves.
 
-```powershell
-dotnet build .\mmo98trainer.csproj -c Release '-p:GameManagedPath=F:\SteamLibrary\steamapps\common\MMO98\MMO98_Data\Managed'
+Closing the menu leaves active effects running. **F8** switches off the continuous effects and returns speed to 1x. Resource edits and unlocks remain, and the game's pause state stays as you set it.
+
+Your effect settings and menu preferences are remembered between sessions.
+
+## Changing shortcuts
+
+Close the game and open:
+
+```text
+BepInEx/config/com.mmo98.trainer.cfg
 ```
 
-Alternatively, sync local reference copies, then use the default build:
+Edit the keys under `[Shortcuts]` and save the file. Supported keys are **Insert**, **Home**, and **F1–F12**. Use a different key for each action.
 
-```powershell
-.\scripts\Sync-GameReferences.ps1 -GameDirectory 'F:\SteamLibrary\steamapps\common\MMO98'
-dotnet build .\mmo98trainer.csproj -c Release
-```
+## Troubleshooting
 
-The seven references are Assembly-CSharp, R3, Unity.InputSystem, SourceGeneration, ObservableCollections, UnityEngine.UI, and Unity.TextMeshPro. Sync them after a game update. The `libs` directory and other local reference files are ignored by Git. Build dependencies are pinned to the versions used for verification.
+- **The menu does not appear:** press Insert, check that BepInEx 6 Mono is installed, and confirm the DLL is in the folder shown above.
+- **Buttons are disabled:** load a profile first. An action may also be unavailable if the game version has changed.
+- **The menu is too large or misplaced:** use **Settings → Reset menu position and scale**.
+- **An action reports an error:** check `BepInEx/LogOutput.log` for details.
 
-Close MMO98, then copy **only** `bin/Release/netstandard2.1/mmo98trainer.dll` to `MMO98/BepInEx/plugins/mmo98trainer/mmo98trainer.dll`. Replace the old trainer DLL and avoid leaving a second copy elsewhere under `plugins`. The game supplies its own assemblies; do not install the `libs` directory or test DLLs. A missing-reference build explains how to sync the required files.
+Last checked with MMO98 **2026.07.26.1**. See [compatibility information](COMPATIBILITY.md) for the tested setup and known limitation.
 
-## Verification
+## Uninstalling
 
-Run the build, numeric boundary tests, installed game API checks, and compiled plugin metadata checks:
-
-```powershell
-.\scripts\Verify.ps1 -GameDirectory 'F:\SteamLibrary\steamapps\common\MMO98'
-```
-
-Run just the numeric tests without an installed game:
-
-```powershell
-dotnet run --project .\tests\Verification\Verification.csproj -c Release
-```
-
-For the contained graphical runtime test, close MMO98 and keep Steam available:
-
-```powershell
-.\scripts\Runtime-Smoke.ps1 -GameDirectory 'F:\SteamLibrary\steamapps\common\MMO98' -Graphics
-```
-
-The runtime harness starts the game with a hidden-window request, uses disposable state and real game catalogs, and never loads a profile or resumes a game timer. It temporarily suppresses scene-specific UI, audio, and IRC presentation while testing game commands. It restores the previous trainer and config, removes its test DLL and temporary Steam app ID file, and checks save-file hashes. Logs remain under `obj/runtime-smoke`, named by mode. The graphical run passed **74 assertions** and exited normally.
-
-Omit `-Graphics` for a headless batch run; rendered hit-target checks are skipped in that mode. Use `-Baseline` to compare startup/shutdown with the previously installed trainer. On the verified installation, both the original 1.0.0 trainer and the updated trainer trigger a native headless shutdown crash after assertions finish. The script reports that failure separately. Normal graphical testing exits cleanly. Details are in [COMPATIBILITY.md](COMPATIBILITY.md).
-
-Use `-UIPreview` to capture four rendered tab screenshots with disposable sample balances under `obj/runtime-smoke/ui-preview`. Use `-UIProbe` to export the loaded native UI's fonts, sprites, colors, and control sizes to `obj/runtime-smoke/NativeUI-probe.csv`.
-
-Automated graphical checks cover native hit targets, button callbacks, text focus cleanup, modal input, scrolling, tab retention, scaling, and dragging. To verify gameplay presentation and save roundtrips, open a real profile and check development notifications and normal saving/reloading; those checks remain outside the disposable-state harness.
-
-Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `fix(trainer): ...`, `feat(trainer): ...`, `test(trainer): ...`, and `docs(trainer): ...` at meaningful checkpoints.
+Close the game and remove `mmo98trainer.dll` from the plugins folder. You can also delete `BepInEx/config/com.mmo98.trainer.cfg` to remove its settings. Changes already saved to a profile remain.
