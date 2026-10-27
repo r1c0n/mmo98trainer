@@ -69,7 +69,7 @@ Edit the keys under `[Shortcuts]` and save the file. Supported keys are **Insert
 - **The menu is too large or misplaced:** use **Settings → Reset menu position and scale**.
 - **An action reports an error:** check `BepInEx/LogOutput.log` for details.
 
-Last checked with MMO98 **2026.07.26.1**. See [compatibility information](COMPATIBILITY.md) for the tested setup and known limitation.
+Last checked with MMO98 **2026.07.26.1**. See [compatibility information](COMPATIBILITY.md) for the tested setup.
 
 ## Uninstalling
 

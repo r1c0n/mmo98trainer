@@ -33,4 +33,4 @@
 - Game assemblies are excluded from copy-local output; install only the trainer DLL.
 - Added reference-sync, verification, and runtime smoke scripts.
 
-Native headless shutdown still crashes on the verified installation with both the original and updated trainer. See COMPATIBILITY.md for the observed limits.
+Native headless shutdown still crashes on the verified installation with both the original and updated trainer. See [COMPATIBILITY.md](COMPATIBILITY.md) for the tested setup.

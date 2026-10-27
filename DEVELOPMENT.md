@@ -54,6 +54,6 @@ Additional modes:
 | `-UIPreview` | Capture four tab screenshots under `obj/runtime-smoke/ui-preview` |
 | `-UIProbe` | Export native UI assets and control sizes to `obj/runtime-smoke/NativeUI-probe.csv` |
 
-See [COMPATIBILITY.md](COMPATIBILITY.md) for the known headless shutdown limitation. Real-profile saving/reloading and gameplay notifications require a manual play session.
+See [COMPATIBILITY.md](COMPATIBILITY.md) for the tested setup. Real-profile saving/reloading and gameplay notifications require a manual play session.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), for example `docs(readme): clarify installation`.
